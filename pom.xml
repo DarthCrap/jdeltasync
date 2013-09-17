@@ -3,7 +3,7 @@
   <groupId>com.googlecode.jdeltasync</groupId>
   <artifactId>jdeltasync</artifactId>
   <packaging>jar</packaging>
-  <version>0.7-SNAPSHOT</version>
+  <version>0.7-SNAPSHOT-BRANCH-DC</version>
   <name>JDeltaSync</name>
   <url>http://jdeltasync.googlecode.com</url>
   <description>
@@ -24,9 +24,9 @@
   </licenses>
 
   <scm>
-    <connection>scm:git:git@github.com:ntherning/jdeltasync.git</connection>
-    <url>scm:git:git@github.com:ntherning/jdeltasync.git</url>
-    <developerConnection>scm:git:git@github.com:ntherning/jdeltasync.git</developerConnection>
+    <connection>scm:git:git@github.com:darthcrap/jdeltasync.git</connection>
+    <url>scm:git:git@github.com:darthcrap/jdeltasync.git</url>
+    <developerConnection>scm:git:git@github.com:darthcrap/jdeltasync.git</developerConnection>
   </scm>
 
   <dependencies>
@@ -35,11 +35,11 @@
       <artifactId>slf4j-api</artifactId>
       <version>1.5.8</version>
     </dependency>
-
+	
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpclient</artifactId>
-      <version>4.1</version>
+      <version>4.3</version>
       <exclusions>
         <exclusion>
           <artifactId>commons-logging</artifactId>
@@ -81,7 +81,7 @@
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.5</version>
+      <version>4.11</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -120,7 +120,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-release-plugin</artifactId>
-        <version>2.0</version>
+        <version>2.4.1</version>
         <configuration>
           <remoteTagging>true</remoteTagging>
         </configuration>
@@ -128,7 +128,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>2.4</version>
+        <version>3.1</version>
         <configuration>
           <source>1.5</source>
           <target>1.5</target>
@@ -141,7 +141,7 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-eclipse-plugin</artifactId>
-        <version>2.5</version>
+        <version>2.9</version>
         <extensions>false</extensions>
         <inherited>true</inherited>
         <configuration>
@@ -168,6 +168,20 @@
           </additionalConfig>
         </configuration>
       </plugin>
+	  <plugin>
+		<groupId>org.apache.maven.plugins</groupId>
+		<artifactId>maven-source-plugin</artifactId>
+		<version>2.2.1</version>
+		<executions>
+		  <execution>
+			<id>attach-sources</id>
+			<phase>verify</phase>
+			<goals>
+			  <goal>jar-no-fork</goal>
+			</goals>
+		  </execution>
+		</executions>
+	  </plugin>
     </plugins>
   </build>
   

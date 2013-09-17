@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011, the JDeltaSync project. All Rights Reserved.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -15,6 +15,16 @@
  */
 package com.googlecode.jdeltasync;
 
+import com.googlecode.jdeltasync.hu01.HU01DecompressorOutputStream;
+import com.googlecode.jdeltasync.hu01.HU01Exception;
+import com.googlecode.jdeltasync.message.Clazz;
+import com.googlecode.jdeltasync.message.Command;
+import com.googlecode.jdeltasync.message.EmailAddCommand;
+import com.googlecode.jdeltasync.message.EmailDeleteCommand;
+import com.googlecode.jdeltasync.message.FolderAddCommand;
+import com.googlecode.jdeltasync.message.FolderDeleteCommand;
+import com.googlecode.jdeltasync.message.SyncRequest;
+import com.googlecode.jdeltasync.message.SyncResponse;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -30,7 +40,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
-
 import org.apache.commons.codec.binary.Base64OutputStream;
 import org.apache.http.Header;
 import org.apache.http.HttpHost;
@@ -40,24 +49,20 @@ import org.apache.http.HttpStatus;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.ResponseHandler;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.client.params.ClientPNames;
-import org.apache.http.client.protocol.ClientContext;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.client.utils.URIUtils;
 import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.client.DefaultRedirectStrategy;
 import org.apache.http.impl.client.RedirectLocations;
 import org.apache.http.impl.conn.SchemeRegistryFactory;
 import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
-import org.apache.http.params.CoreConnectionPNames;
-import org.apache.http.params.HttpConnectionParams;
-import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.BasicHttpContext;
-import org.apache.http.protocol.ExecutionContext;
 import org.apache.http.protocol.HttpContext;
+import org.apache.http.protocol.HttpCoreContext;
 import org.apache.james.mime4j.MimeException;
 import org.apache.james.mime4j.descriptor.BodyDescriptor;
 import org.apache.james.mime4j.message.SimpleContentHandler;
@@ -65,34 +70,21 @@ import org.apache.james.mime4j.parser.MimeStreamParser;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
-import com.googlecode.jdeltasync.hu01.HU01DecompressorOutputStream;
-import com.googlecode.jdeltasync.hu01.HU01Exception;
-import com.googlecode.jdeltasync.message.Clazz;
-import com.googlecode.jdeltasync.message.Command;
-import com.googlecode.jdeltasync.message.EmailAddCommand;
-import com.googlecode.jdeltasync.message.EmailDeleteCommand;
-import com.googlecode.jdeltasync.message.FolderAddCommand;
-import com.googlecode.jdeltasync.message.FolderDeleteCommand;
-import com.googlecode.jdeltasync.message.SyncRequest;
-import com.googlecode.jdeltasync.message.SyncResponse;
-
 /**
  * Main class used to communicate with the Windows Live Hotmail service using
- * Microsoft's proprietary DeltaSync protocol. {@link #login(String, String)} 
- * has to be called to obtain a {@link DeltaSyncSession} which can then be used 
+ * Microsoft's proprietary DeltaSync protocol. {@link #login(String, String)}
+ * has to be called to obtain a {@link DeltaSyncSession} which can then be used
  * to query for the folders and messages on the server and to delete messages.
  */
-public class DeltaSyncClient {
-    
+public class DeltaSyncClient implements IDeltaSyncClient {
+
     private static final String LOGIN_BASE_URI = "https://login.live.com/RST2.srf";
-    private static final String LOGIN_USER_AGENT = 
-          "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; IDCRL 5.000.819.1; " 
-        + "IDCRL-cfg 6.0.11409.0; App wlmail.exe, 14.0.8117.416, " 
-        + "{47A6D4CF-5EB0-4B0E-9138-1B3F2DD40981})";
+    private static final String LOGIN_USER_AGENT =
+          "Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; IDCRL 5.000.819.1; IDCRL-cfg 6.0.11409.0; App wlmail.exe, 14.0.8117.416, {47A6D4CF-5EB0-4B0E-9138-1B3F2DD40981})";
     private static final String DS_USER_AGENT = "WindowsLiveMail/1.0";
     private static final String DS_BASE_URI = "http://mail.services.live.com";
     private static final byte[] LINE_SEPARATOR;
-    
+
     static {
         try {
             LINE_SEPARATOR = System.getProperty("line.separator").getBytes("ASCII");
@@ -102,60 +94,82 @@ public class DeltaSyncClient {
     }
 
     private final HttpClient httpClient;
-    
+	private RequestConfig rcConfig = RequestConfig.DEFAULT;
+
     /**
-     * Creates a new {@link DeltaSyncClient} using a 
+     * Creates a new {@link DeltaSyncClient} using a
      * {@link ThreadSafeClientConnManager} with the default settings.
+	 *
+	 * @deprecated ThreadSafeClientConnManager has been deprecated in HttpClient. Use {@link #DeltaSyncClient(org.apache.http.client.HttpClient)}
      */
+	@Deprecated
     public DeltaSyncClient() {
         this(new ThreadSafeClientConnManager(SchemeRegistryFactory.createDefault()));
     }
-    
+
     /**
-     * Creates a new {@link DeltaSyncClient} using the specified 
-     * {@link ClientConnectionManager}. 
-     * 
+     * Creates a new {@link DeltaSyncClient} using the specified
+     * {@link ClientConnectionManager}.
+     *
      * @param connectionManager the {@link ClientConnectionManager}.
+     * @deprecated ThreadSafeClientConnManager has been deprecated in HttpClient. Use {@link #DeltaSyncClient(org.apache.http.client.HttpClient)}
      */
+	@Deprecated
     public DeltaSyncClient(ClientConnectionManager connectionManager) {
         this.httpClient = new DefaultHttpClient(connectionManager);
-        setConnectionTimeout(5 * 1000);
-        setSoTimeout(60 * 1000);
+        this.setConnectionTimeout(5 * 1000);
+        this.setSoTimeout(60 * 1000);
     }
-    
+
+
+	public DeltaSyncClient(HttpClient httpClient) {
+		if (httpClient == null) {
+			throw new IllegalArgumentException("Client must not be NULL.");
+		}
+		else {
+			this.httpClient = httpClient;
+		}
+	}
+
+
+
     /**
      * Returns the {@link ClientConnectionManager} in use.
-     * 
+     *
      * @return the {@link ClientConnectionManager}.
      */
+	@Deprecated
+	@Override
     public ClientConnectionManager getConnectionManager() {
         return httpClient.getConnectionManager();
     }
-    
+
     /**
      * Sets the connection timeout of the {@link HttpClient} instance. See
      * {@link CoreConnectionPNames#CONNECTION_TIMEOUT}.
-     * 
+     *
      * @param timeout the timeout.
      */
+	@Override
     public void setConnectionTimeout(int timeout) {
-        HttpConnectionParams.setConnectionTimeout(this.httpClient.getParams(), timeout);
+		this.rcConfig = RequestConfig.copy(this.rcConfig).setConnectTimeout(timeout).build();
     }
-    
+
     /**
      * Sets the socket timeout (SO_TIMEOUT) of the {@link HttpClient} instance. See
      * {@link CoreConnectionPNames#SO_TIMEOUT}.
-     * 
+     *
      * @param timeout the timeout.
      */
+	@Override
     public void setSoTimeout(int timeout) {
-        HttpConnectionParams.setSoTimeout(this.httpClient.getParams(), timeout);
+		this.rcConfig = RequestConfig.copy(this.rcConfig).setSocketTimeout(timeout).build();
     }
-    
+
     /**
-     * Logs in using the specified username and password. Returns a 
-     * {@link DeltaSyncSession} object on successful authentication. 
-     * 
+     * Logs in using the specified username and password. Returns a
+     * {@link DeltaSyncSession} object on successful authentication.
+     *
      * @param username the username.
      * @param password the password.
      * @return the session.
@@ -163,40 +177,41 @@ public class DeltaSyncClient {
      * @throws DeltaSyncException on errors returned by the server.
      * @throws IOException on communication errors.
      */
-    public DeltaSyncSession login(String username, String password) 
+	@Override
+    public DeltaSyncSession login(String username, String password)
             throws AuthenticationException, DeltaSyncException, IOException {
-        
+
         if (username == null) {
             throw new NullPointerException("username");
         }
         if (password == null) {
             throw new NullPointerException("password");
         }
-        
+
         SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
         format.setTimeZone(TimeZone.getTimeZone("UTC"));
-        
+
         Date created = new Date();
         Date expires = new Date(created.getTime() + 5 * 60 * 1000);
-        
+
         Document request = XmlUtil.parse(getClass().getResourceAsStream("login-request.xml"));
         Element elSecurity = XmlUtil.getElement(request, "/s:Envelope/s:Header/wsse:Security");
         XmlUtil.setTextContent(elSecurity, "wsse:UsernameToken/wsse:Username", username);
         XmlUtil.setTextContent(elSecurity, "wsse:UsernameToken/wsse:Password", password);
         XmlUtil.setTextContent(elSecurity, "wsu:Timestamp/wsu:Created", format.format(created));
         XmlUtil.setTextContent(elSecurity, "wsu:Timestamp/wsu:Expires", format.format(expires));
-        
+
         DeltaSyncSession session = new DeltaSyncSession(username, password);
-        
+
         if (session.getLogger().isDebugEnabled()) {
-            session.getLogger().debug("Sending login request: {}", 
+            session.getLogger().debug("Sending login request: {}",
                     XmlUtil.toString(request, false)
                         .replaceAll(Pattern.quote(password), "******"));
         }
-        
-        Document response = post(session, LOGIN_BASE_URI, LOGIN_USER_AGENT, "application/soap+xml", 
+
+        Document response = post(session, LOGIN_BASE_URI, LOGIN_USER_AGENT, "application/soap+xml",
                 request, new UriCapturingResponseHandler<Document>() {
-            
+
             public Document handle(URI uri, HttpResponse response) throws DeltaSyncException, IOException {
                 return XmlUtil.parse(response.getEntity().getContent());
             }
@@ -208,49 +223,50 @@ public class DeltaSyncClient {
         if (XmlUtil.hasElement(response, "/s:Envelope/s:Body/s:Fault")) {
             throw new AuthenticationException(XmlUtil.getTextContent(response, "/s:Envelope/s:Body/s:Fault/s:Reason/s:Text"));
         }
-        
-        String ticket = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/" 
+
+        String ticket = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/"
                 + "wst:RequestSecurityTokenResponse/wst:RequestedSecurityToken/wsse:BinarySecurityToken");
         if (ticket == null) {
-            String flowUrl = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/" 
+            String flowUrl = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/"
                     + "wst:RequestSecurityTokenResponse/psf:pp/psf:flowurl");
-            String requestStatus = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/" 
+            String requestStatus = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/"
                     + "wst:RequestSecurityTokenResponse/psf:pp/psf:reqstatus");
-            String errorStatus = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/" 
+            String errorStatus = XmlUtil.getTextContent(response, "/s:Envelope/s:Body/wst:RequestSecurityTokenResponseCollection/"
                     + "wst:RequestSecurityTokenResponse/psf:pp/psf:errorstatus");
             if (flowUrl != null || requestStatus != null || errorStatus != null) {
                 throw new AuthenticationException(flowUrl, requestStatus, errorStatus);
             }
             throw new AuthenticationException("Uknown authentication failure");
         }
-        
+
         session.ticket = ticket;
         session.dsBaseUri = DS_BASE_URI;
-        
+
         return session;
     }
-    
+
     /**
      * Renews the specified session and returns a new session. The old session
      * object must be discarded. This should be called when a {@link SessionExpiredException}
      * has been thrown indicating that a session has expired.
-     * 
+     *
      * @param session the old session.
      * @return the new session.
      * @throws AuthenticationException if authentication fails.
      * @throws DeltaSyncException on errors returned by the server.
      * @throws IOException on communication errors.
      */
-    public DeltaSyncSession renew(DeltaSyncSession session) 
+	@Override
+    public DeltaSyncSession renew(DeltaSyncSession session)
         throws AuthenticationException, DeltaSyncException, IOException {
-        
+
         return login(session.getUsername(), session.getPassword());
     }
-    
+
     /**
-     * Downloads the HU01 compressed content of the message with the specified 
+     * Downloads the HU01 compressed content of the message with the specified
      * id and writes it to the specified {@link OutputStream}.
-     * 
+     *
      * @param session the session.
      * @param messageId the id of the message to download.
      * @param out the stream to write the HU01 compressed message content to.
@@ -258,16 +274,17 @@ public class DeltaSyncClient {
      * @throws DeltaSyncException on errors returned by the server.
      * @throws IOException on communication errors.
      */
-    public void downloadRawMessageContent(DeltaSyncSession session, String messageId, OutputStream out) 
+	@Override
+    public void downloadRawMessageContent(DeltaSyncSession session, String messageId, OutputStream out)
             throws DeltaSyncException, IOException {
-        
+
         downloadMessageContent(session, messageId, out, true);
     }
-    
+
     /**
-     * Downloads the content of the message with the specified id and writes it 
+     * Downloads the content of the message with the specified id and writes it
      * to the specified {@link OutputStream}.
-     * 
+     *
      * @param session the session.
      * @param messageId the id of the message to download.
      * @param out the stream to write the message content to.
@@ -275,17 +292,18 @@ public class DeltaSyncClient {
      * @throws DeltaSyncException on errors returned by the server.
      * @throws IOException on communication errors.
      */
-    public void downloadMessageContent(DeltaSyncSession session, String messageId, OutputStream out) 
+	@Override
+    public void downloadMessageContent(DeltaSyncSession session, String messageId, OutputStream out)
             throws DeltaSyncException, IOException {
-        
+
         downloadMessageContent(session, messageId, out, false);
     }
-    
-    private void downloadMessageContent(final DeltaSyncSession session, 
-            final String messageId, final OutputStream output, final boolean raw) 
+
+    private void downloadMessageContent(final DeltaSyncSession session,
+            final String messageId, final OutputStream output, final boolean raw)
             throws DeltaSyncException, IOException {
-        
-        String request = 
+
+        String request =
               "<ItemOperations xmlns=\"ItemOperations:\" xmlns:A=\"HMMAIL:\">"
             +   "<Fetch>"
             +     "<Class>Email</Class>"
@@ -294,13 +312,13 @@ public class DeltaSyncClient {
             +     "<A:ResponseContentType>mtom</A:ResponseContentType>"
             +   "</Fetch>"
             + "</ItemOperations>";
-        
+
         Document response = itemOperations(session, request, new UriCapturingResponseHandler<Document>() {
             public Document handle(URI uri, HttpResponse response)
                     throws DeltaSyncException, IOException {
 
                 session.dsBaseUri = uri.getScheme() + "://" + uri.getHost();
-                
+
                 Header contentType = response.getFirstHeader("Content-Type");
                 if (contentType == null || !contentType.getValue().equals("application/xop+xml")) {
                     if (contentType != null && contentType.getValue().equals("text/xml")) {
@@ -309,19 +327,19 @@ public class DeltaSyncClient {
                     }
                     throw new DeltaSyncException("Unexpected Content-Type received: " + contentType);
                 }
-                
+
                 final Object[] result = new Object[1];
                 MimeStreamParser parser = new MimeStreamParser();
                 parser.setContentHandler(new SimpleContentHandler() {
-                    
+
                     @Override
                     public void headers(org.apache.james.mime4j.message.Header header) {
                     }
-                    
+
                     @Override
                     public void bodyDecoded(BodyDescriptor bd, InputStream is)
                             throws IOException {
-                        
+
                         if ("application/xop+xml".equals(bd.getMimeType())) {
                             try {
                                 result[0] = XmlUtil.parse(is);
@@ -334,7 +352,7 @@ public class DeltaSyncClient {
                                 out = new HU01DecompressorOutputStream(output);
                             }
                             byte[] buffer = new byte[4096];
-                            int n = 0;
+                            int n;
                             while ((n = is.read(buffer)) != -1) {
                                 out.write(buffer, 0, n);
                             }
@@ -342,7 +360,7 @@ public class DeltaSyncClient {
                         }
                     }
                 });
-                
+
                 try {
                     parser.parse(response.getEntity().getContent());
                 } catch (MimeException e) {
@@ -369,45 +387,46 @@ public class DeltaSyncClient {
                     }
                     throw e;
                 }
-                
+
                 if (result[0] instanceof DeltaSyncException) {
                     throw (DeltaSyncException) result[0];
                 }
                 return (Document) result[0];
             }
         });
-        
+
         if (session.getLogger().isDebugEnabled()) {
-            session.getLogger().debug("Received ItemOperations response: {}", 
+            session.getLogger().debug("Received ItemOperations response: {}",
                     XmlUtil.toString(response, false));
         }
-        
+
         checkStatus(response);
         // No general error in the response. Check for a specific <Fetch> error.
-        Element elStatus = XmlUtil.getElement(response, 
+        Element elStatus = XmlUtil.getElement(response,
                 "/itemop:ItemOperations/itemop:Responses/itemop:Fetch/itemop:Status");
         if (elStatus == null) {
-            throw new DeltaSyncException("No <Status> element found in <Fetch> response: " + XmlUtil.toString(response, true));            
+            throw new DeltaSyncException("No <Status> element found in <Fetch> response: " + XmlUtil.toString(response, true));
         }
         int code = Integer.parseInt(elStatus.getTextContent().trim());
         if (code == 4403) {
             throw new NoSuchMessageException(messageId);
         } else if (code != 1) {
-            throw new UnrecognizedErrorCodeException(code, 
+            throw new UnrecognizedErrorCodeException(code,
                     "Unrecognized error code in response for <Fetch> request. Response was: "
                     + XmlUtil.toString(response, true));
         }
     }
 
-    public SyncResponse sync(DeltaSyncSession session, SyncRequest syncRequest) 
+	@Override
+    public SyncResponse sync(DeltaSyncSession session, SyncRequest syncRequest)
             throws DeltaSyncException, IOException {
-        
+
         StringBuilder request = new StringBuilder("<Sync xmlns=\"AirSync:\"><Collections>");
         for (SyncRequest.Collection collection : syncRequest.getCollections()) {
             request.append("<Collection>");
             request.append("<Class>").append(collection.getClazz()).append("</Class>");
             if (collection.getCollectionId() != null) {
-                request.append("<CollectionId>").append(collection.getCollectionId()).append("</CollectionId>");                
+                request.append("<CollectionId>").append(collection.getCollectionId()).append("</CollectionId>");
             }
             request.append("<SyncKey>").append(collection.getSyncKey()).append("</SyncKey>");
             if (collection.isGetChanges()) {
@@ -435,12 +454,12 @@ public class DeltaSyncClient {
             request.append("</Collection>");
         }
         request.append("</Collections></Sync>");
-        
+
         Document response = sync(session, request.toString());
 
         SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
         format.setTimeZone(TimeZone.getTimeZone("UTC"));
-        
+
         List<SyncResponse.Collection> collections = new ArrayList<SyncResponse.Collection>();
         for (Element elCollection : XmlUtil.getElements(response, "//airsync:Collection")) {
             String syncKey = XmlUtil.getTextContent(elCollection, "airsync:SyncKey");
@@ -448,7 +467,7 @@ public class DeltaSyncClient {
             int status = Integer.parseInt(XmlUtil.getTextContent(elCollection, "airsync:Status"));
             boolean moreAvailable = XmlUtil.hasElement(elCollection, "airsync:MoreAvailable");
             List<Command> commands = new ArrayList<Command>();
-            
+
             switch (clazz) {
             case Email:
                 for (Element elAdd : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Add")) {
@@ -492,21 +511,21 @@ public class DeltaSyncClient {
                 String id = XmlUtil.getTextContent(elDelete, "airsync:ServerId");
                 int deleteStatus = Integer.parseInt(XmlUtil.getTextContent(elDelete, "airsync:Status"));
                 responses.add(new SyncResponse.Collection.EmailDeleteResponse(id, deleteStatus));
-            }            
-            
+            }
+
             collections.add(new SyncResponse.Collection(syncKey, clazz, status, commands, moreAvailable, responses));
         }
-        
+
         SyncResponse syncResponse = new SyncResponse(collections);
-        
+
         session.getLogger().debug("Got SyncResponse: {}", syncResponse);
-        
+
         return syncResponse;
     }
-    
+
     private Document sync(final DeltaSyncSession session, String request) throws DeltaSyncException, IOException {
         return call("Sync", session, request, new UriCapturingResponseHandler<Document>() {
-            
+
             public Document handle(URI uri, HttpResponse response)
                     throws DeltaSyncException, IOException {
 
@@ -514,24 +533,24 @@ public class DeltaSyncClient {
                 Document doc = XmlUtil.parse(response.getEntity().getContent());
                 checkStatus(doc);
                 if (session.getLogger().isDebugEnabled()) {
-                    session.getLogger().debug("Received Sync response: {}", 
+                    session.getLogger().debug("Received Sync response: {}",
                             XmlUtil.toString(doc, false));
                 }
                 return doc;
             }
-            
+
         });
     }
-    
-    private <T> T itemOperations(final DeltaSyncSession session, String request, 
+
+    private <T> T itemOperations(final DeltaSyncSession session, String request,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
-        
+
         return call("ItemOperations", session, request, handler);
     }
-    
-    private <T> T call(final String cmd, final DeltaSyncSession session, String request, 
+
+    private <T> T call(final String cmd, final DeltaSyncSession session, String request,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
-        
+
         if (session.getLogger().isDebugEnabled()) {
             try {
                 Document document = XmlUtil.parse(new ByteArrayInputStream(request.getBytes()));
@@ -541,15 +560,15 @@ public class DeltaSyncClient {
             }
         }
 
-        return post(session, session.dsBaseUri + "/DeltaSync_v2.0.0/" + cmd + ".aspx?" 
+        return post(session, session.dsBaseUri + "/DeltaSync_v2.0.0/" + cmd + ".aspx?"
                 + session.getTicket(), DS_USER_AGENT, "text/xml", request, handler);
     }
-    
+
     private void checkStatus(Document doc) throws DeltaSyncException {
         Element status = XmlUtil.getElement(doc.getDocumentElement(), "*:Status");
         if (status == null) {
             // All responses should have a <Status> element
-            throw new DeltaSyncException("No <Status> element found in response: " + XmlUtil.toString(doc, true));            
+            throw new DeltaSyncException("No <Status> element found in response: " + XmlUtil.toString(doc, true));
         }
         int code = Integer.parseInt(status.getTextContent().trim());
         if (code != 1) {
@@ -574,28 +593,28 @@ public class DeltaSyncClient {
             }
         }
     }
-    
-    private <T> T post(DeltaSyncSession session, String uri, String userAgent, String contentType, Document doc, 
+
+    private <T> T post(DeltaSyncSession session, String uri, String userAgent, String contentType, Document doc,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
-        
+
         return post(session, uri, userAgent, contentType, XmlUtil.toByteArray(doc), handler);
     }
-    
-    private <T> T post(DeltaSyncSession session, String uri, String userAgent,String contentType, String s, 
+
+    private <T> T post(DeltaSyncSession session, String uri, String userAgent,String contentType, String s,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
-        
+
         return post(session, uri, userAgent, contentType, s.getBytes("UTF-8"), handler);
     }
-    
-    private <T> T post(final DeltaSyncSession session, String uri, final String userAgent, final String contentType, 
+
+    private <T> T post(final DeltaSyncSession session, String uri, final String userAgent, final String contentType,
             final byte[] data, final UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
-        
+
         final HttpPost post = createHttpPost(uri, userAgent, contentType, data);
         final HttpContext context = new BasicHttpContext();
-        context.setAttribute(ClientContext.COOKIE_STORE, session.cookies);
-        
+        context.setAttribute(HttpClientContext.COOKIE_STORE, session.cookies);
+
         try {
-        
+
             return httpClient.execute(post, new ResponseHandler<T>() {
                 public T handleResponse(HttpResponse response) throws ClientProtocolException, IOException {
                     try {
@@ -603,29 +622,36 @@ public class DeltaSyncClient {
                             URI redirectUri = getRedirectLocationURI(session, post, response, context);
                             return post(session, redirectUri.toString(), userAgent, contentType, data, handler);
                         }
-                        
+
                         if (response.getStatusLine().getStatusCode() != HttpStatus.SC_OK) {
-                            throw new HttpException(response.getStatusLine().getStatusCode(), 
+                            throw new HttpException(response.getStatusLine().getStatusCode(),
                                     response.getStatusLine().getReasonPhrase());
                         }
-                        
-                        HttpUriRequest request = (HttpUriRequest) context.getAttribute(ExecutionContext.HTTP_REQUEST);
-                        HttpHost host = (HttpHost)  context.getAttribute(ExecutionContext.HTTP_TARGET_HOST);
-                        URI uri = request.getURI();
-                        if (!request.getURI().isAbsolute()) {
-                            try {
-                                uri = URIUtils.rewriteURI(uri, host);
-                            } catch (URISyntaxException e) {
-                                throw new DeltaSyncException(e);
-                            }
-                        }
+
+                        HttpRequest request = (HttpRequest) context.getAttribute(HttpCoreContext.HTTP_REQUEST);
+                        HttpHost host = (HttpHost)  context.getAttribute(HttpCoreContext.HTTP_TARGET_HOST);
+                        URI uri;
+						try {
+							if (request instanceof HttpUriRequest) {
+								uri = ((HttpUriRequest)request).getURI();
+							}
+							else {
+								uri = new URI(request.getRequestLine().getUri());
+							}
+							if (!uri.isAbsolute()) {
+								uri = URIUtils.rewriteURI(uri, host);
+							}
+						}
+						catch (URISyntaxException e) {
+							throw new DeltaSyncException(e);
+						}
                         return handler.handle(uri, response);
                     } catch (DeltaSyncException e) {
                         throw new RuntimeException(e);
                     }
                 }
             }, context);
-            
+
         } catch (RuntimeException e) {
             Throwable t = e.getCause();
             while (t != null) {
@@ -644,6 +670,7 @@ public class DeltaSyncClient {
         HttpPost post = new HttpPost(uri);
         post.setHeader("User-Agent", userAgent);
         post.setEntity(entity);
+		post.setConfig(this.rcConfig);
         return post;
     }
 
@@ -665,14 +692,14 @@ public class DeltaSyncClient {
             return false;
         }
     }
-    
+
     /**
      * Slightly modified version of {@link DefaultRedirectStrategy#getLocationURI(HttpRequest, HttpResponse, HttpContext)}
      * which also adds the query string from the original request URI to the new URI.
      */
-    private URI getRedirectLocationURI(DeltaSyncSession session, HttpUriRequest request, 
+    private URI getRedirectLocationURI(DeltaSyncSession session, HttpUriRequest request,
             HttpResponse response, HttpContext context) throws DeltaSyncException {
-        
+
         //get the location header to find out where to redirect to
         Header locationHeader = response.getFirstHeader("location");
         if (locationHeader == null) {
@@ -696,40 +723,42 @@ public class DeltaSyncClient {
             throw new DeltaSyncException("Invalid redirect URI: " + location, ex);
         }
 
-        HttpParams params = response.getParams();
+		final HttpClientContext clientContext = HttpClientContext.adapt(context);
+		final RequestConfig config = clientContext.getRequestConfig();
+
+
         // rfc2616 demands the location value be a complete URI
         // Location       = "Location" ":" absoluteURI
-        if (!uri.isAbsolute()) {
-            if (params.isParameterTrue(ClientPNames.REJECT_RELATIVE_REDIRECT)) {
-                throw new DeltaSyncException("Relative redirect location '"
-                        + uri + "' not allowed");
-            }
-            // Adjust location URI
-            HttpHost target = (HttpHost) context.getAttribute(
-                    ExecutionContext.HTTP_TARGET_HOST);
-            if (target == null) {
-                throw new IllegalStateException("Target host not available " +
-                        "in the HTTP context");
-            }
-            try {
-                URI requestURI = new URI(request.getRequestLine().getUri());
-                URI absoluteRequestURI = URIUtils.rewriteURI(requestURI, target, true);
-                uri = URIUtils.resolve(absoluteRequestURI, uri);
-            } catch (URISyntaxException ex) {
-                throw new DeltaSyncException(ex.getMessage(), ex);
-            }
-        }
-        
-        if (params.isParameterFalse(ClientPNames.ALLOW_CIRCULAR_REDIRECTS)) {
+		try {
+			if (!uri.isAbsolute()) {
+				if (config.isRelativeRedirectsAllowed()) {
+					throw new DeltaSyncException("Relative redirect location '"
+							+ uri + "' not allowed");
+				}
+				// Adjust location URI
+				HttpHost target = clientContext.getTargetHost();
+				if (target == null) {
+					throw new IllegalStateException("Target host not available " +
+							"in the HTTP context");
+				}
 
-            RedirectLocations redirectLocations = (RedirectLocations) context.getAttribute(
+				URI requestURI = new URI(request.getRequestLine().getUri());
+				URI absoluteRequestURI = URIUtils.rewriteURI(requestURI, target, false);
+				uri = URIUtils.resolve(absoluteRequestURI, uri);
+			}
+		}
+		catch (URISyntaxException ex) {
+			throw new DeltaSyncException(ex.getMessage(), ex);
+		}
+
+        RedirectLocations redirectLocations = (RedirectLocations) clientContext.getAttribute(
                     "http.protocol.redirect-locations");
+        if (redirectLocations == null) {
+            redirectLocations = new RedirectLocations();
+            context.setAttribute("http.protocol.redirect-locations", redirectLocations);
+        }
 
-            if (redirectLocations == null) {
-                redirectLocations = new RedirectLocations();
-                context.setAttribute("http.protocol.redirect-locations", redirectLocations);
-            }
-
+        if (config.isCircularRedirectsAllowed()) {
             URI redirectURI;
             if (uri.getFragment() != null) {
                 try {
@@ -751,11 +780,11 @@ public class DeltaSyncClient {
                 redirectLocations.add(redirectURI);
             }
         }
-        
+
         return uri;
     }
-    
-    
+
+
     private interface UriCapturingResponseHandler<T> {
         T handle(URI uri, HttpResponse response) throws DeltaSyncException, IOException;
     }
