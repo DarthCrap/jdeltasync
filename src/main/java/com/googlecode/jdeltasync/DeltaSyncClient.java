@@ -496,7 +496,8 @@ public class DeltaSyncClient implements IDeltaSyncClient {
                 for (Element elAdd : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Add")) {
                     String id = XmlUtil.getTextContent(elAdd, "airsync:ServerId");
                     String displayName = XmlUtil.getTextContent(elAdd, "airsync:ApplicationData/hmfolder:DisplayName");
-                    commands.add(new FolderAddCommand(id, displayName));
+					String parentID = XmlUtil.getTextContent(elAdd, "airsync:ApplicationData/hmfolder:ParentId");
+                    commands.add(new FolderAddCommand(id, displayName, parentID));
 
                 }
                 for (Element elDelete : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Delete")) {

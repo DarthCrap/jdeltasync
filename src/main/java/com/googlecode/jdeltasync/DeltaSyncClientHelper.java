@@ -203,7 +203,8 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
                 if (cmd instanceof FolderAddCommand) {
                     FolderAddCommand addCmd = (FolderAddCommand) cmd;
                     added.add(new Folder(addCmd.getId(),
-                            getMappedDisplayName(addCmd.getDisplayName())));
+                            getMappedDisplayName(addCmd.getDisplayName()),
+							addCmd.getParentID()));
                 } else if (cmd instanceof FolderDeleteCommand) {
                     FolderDeleteCommand delCmd = (FolderDeleteCommand) cmd;
                     deleted.add(delCmd.getId());
