@@ -19,56 +19,20 @@ package com.googlecode.jdeltasync.message;
 /**
  * {@link Command} exchanged when a folder has been added.
  */
-public class FolderAddCommand extends Command {
-    private final String id;
-	private final String parentId;
-    private final String displayName;
-
-    /**
-     * Creates a new {@link FolderAddCommand}.
-     *
-     * @param id the id of the folder.
-     * @param displayName the <code>DisplayName</code>.
-     */
-    public FolderAddCommand(String id, String displayName, String parentID) {
-        this.id = id;
-        this.displayName = displayName;
-		this.parentId = parentID;
-    }
-
-    /**
-     * Returns the id of the folder that has been added.
-     *
-     * @return the id.
-     */
-    public String getId() {
-        return id;
-    }
-
-    /**
-     * Returns the <code>DisplayName</code> of the folder that has been added.
-     *
-     * @return the <code>DisplayName</code>.
-     */
-    public String getDisplayName() {
-        return displayName;
-    }
-
+public class FolderAddCommand extends AbstractFolderDetailsCommand {
 	/**
-	 * Returns the id of the parent of the folder that has been added.
-	 * @return the parent id
-	 */
-	public String getParentID() {
-		return this.parentId;
+	@see AbstractFolderDetailsCommand#AbstractFolderDetailsCommand(java.lang.String, java.lang.String, java.lang.String)
+	*/
+	public FolderAddCommand(String id, String displayName, String parentID) {
+		super(id, displayName, parentID);
 	}
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder(super.toString() + "(");
-        sb.append("id").append("=").append(id).append(",");
-        sb.append("displayName").append("=").append(displayName).append(",");
-		sb.append("parentID").append("=").append(parentId);
-        sb.append(")");
-        return sb.toString();
-    }
+        StringBuilder sb = new StringBuilder(super.toString());
+		sb.append("(");
+		sb.append("FolderAddCommand");
+		sb.append(")");
+		return sb.toString();
+	}
 }

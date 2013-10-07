@@ -22,12 +22,12 @@ import java.io.OutputStream;
 import org.apache.http.conn.ClientConnectionManager;
 
 public interface IDeltaSyncClient {
-	public void downloadMessageContent(DeltaSyncSession session, String messageId, OutputStream out) throws DeltaSyncException, IOException;
-	public void downloadRawMessageContent(DeltaSyncSession session, String messageId, OutputStream out) throws DeltaSyncException, IOException;
+	public void downloadMessageContent(IDeltaSyncSession session, String messageId, OutputStream out) throws DeltaSyncException, IOException;
+	public void downloadRawMessageContent(IDeltaSyncSession session, String messageId, OutputStream out) throws DeltaSyncException, IOException;
 	@Deprecated public ClientConnectionManager getConnectionManager();
-	public DeltaSyncSession login(String username, String password) throws AuthenticationException, DeltaSyncException, IOException;
-	public DeltaSyncSession renew(DeltaSyncSession session) throws AuthenticationException, DeltaSyncException, IOException;
+	public IDeltaSyncSession login(String username, String password) throws AuthenticationException, DeltaSyncException, IOException;
+	public IDeltaSyncSession renew(IDeltaSyncSession session) throws AuthenticationException, DeltaSyncException, IOException;
 	public void setConnectionTimeout(int timeout);
 	public void setSoTimeout(int timeout);
-	public SyncResponse sync(DeltaSyncSession session, SyncRequest syncRequest) throws DeltaSyncException, IOException;
+	public SyncResponse sync(IDeltaSyncSession session, SyncRequest syncRequest) throws DeltaSyncException, IOException;
 }

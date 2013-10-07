@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011, the JDeltaSync project. All Rights Reserved.
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -23,17 +23,17 @@ import org.slf4j.LoggerFactory;
 /**
  * Represents a particular user's session.
  */
-public class DeltaSyncSession {
+public class DeltaSyncSession implements IDeltaSyncSession {
     private final String username;
     private final String password;
     private Logger logger;
-    protected String ticket;
-    protected String dsBaseUri = null;
-    protected CookieStore cookies = new BasicCookieStore();
-    
+    private String ticket;
+    private String dsBaseUri = null;
+    private CookieStore cookies = new BasicCookieStore();
+
     /**
      * Creates a new {@link DeltaSyncSession}.
-     * 
+     *
      * @param username the user's username.
      * @param password the user's password.
      */
@@ -44,18 +44,20 @@ public class DeltaSyncSession {
 
     /**
      * Returns the username.
-     * 
+     *
      * @return the username.
      */
+	@Override
     public String getUsername() {
         return username;
     }
 
     /**
      * Returns the password.
-     * 
+     *
      * @return the password.
      */
+	@Override
     public String getPassword() {
         return password;
     }
@@ -63,21 +65,23 @@ public class DeltaSyncSession {
     /**
      * Returns the ticket associated with this session. This is what the login
      * process returns and the ticket has to be used in every subsequent
-     * <code>Sync</code>, <code>ItemOperations</code>, etc request to the 
+     * <code>Sync</code>, <code>ItemOperations</code>, etc request to the
      * server.
-     * 
+     *
      * @return the ticket.
      */
+	@Override
     public String getTicket() {
         return ticket;
     }
-    
+
     /**
      * Returns the {@link Logger} which will be used by {@link DeltaSyncClient}
      * to log things for this session.
-     * 
+     *
      * @return the {@link Logger}.
      */
+	@Override
     public Logger getLogger() {
         if (logger == null) {
             logger = LoggerFactory.getLogger(DeltaSyncSession.class.getName() + "." + username);
@@ -88,13 +92,14 @@ public class DeltaSyncSession {
     /**
      * Sets the {@link Logger} which will be used by {@link DeltaSyncClient}
      * to log things for this session.
-     * 
+     *
      * @param logger the {@link Logger}.
      */
+	@Override
     public void setLogger(Logger logger) {
         this.logger = logger;
     }
-    
+
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder(super.toString() + "(");
@@ -104,4 +109,20 @@ public class DeltaSyncSession {
         sb.append(")");
         return sb.toString();
     }
+
+	public void setTicket(String ticket) {
+		this.ticket = ticket;
+	}
+
+	public String getBaseUri() {
+		return this.dsBaseUri;
+	}
+
+	public void setBaseUri(String dsBaseUri) {
+		this.dsBaseUri = dsBaseUri;
+	}
+
+	public CookieStore getCookieStore() {
+		return this.cookies;
+	}
 }

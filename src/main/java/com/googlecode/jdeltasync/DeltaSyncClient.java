@@ -19,10 +19,12 @@ import com.googlecode.jdeltasync.hu01.HU01DecompressorOutputStream;
 import com.googlecode.jdeltasync.hu01.HU01Exception;
 import com.googlecode.jdeltasync.message.Clazz;
 import com.googlecode.jdeltasync.message.Command;
-import com.googlecode.jdeltasync.message.EmailAddCommand;
-import com.googlecode.jdeltasync.message.EmailDeleteCommand;
 import com.googlecode.jdeltasync.message.FolderAddCommand;
+import com.googlecode.jdeltasync.message.FolderChangeCommand;
 import com.googlecode.jdeltasync.message.FolderDeleteCommand;
+import com.googlecode.jdeltasync.message.MessageAddCommand;
+import com.googlecode.jdeltasync.message.MessageChangeCommand;
+import com.googlecode.jdeltasync.message.MessageDeleteCommand;
 import com.googlecode.jdeltasync.message.SyncRequest;
 import com.googlecode.jdeltasync.message.SyncResponse;
 import java.io.ByteArrayInputStream;
@@ -73,10 +75,10 @@ import org.w3c.dom.Element;
 /**
  * Main class used to communicate with the Windows Live Hotmail service using
  * Microsoft's proprietary DeltaSync protocol. {@link #login(String, String)}
- * has to be called to obtain a {@link DeltaSyncSession} which can then be used
+ * has to be called to obtain a {@link IDeltaSyncSession} which can then be used
  * to query for the folders and messages on the server and to delete messages.
  */
-public class DeltaSyncClient implements IDeltaSyncClient {
+public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient {
 
     private static final String LOGIN_BASE_URI = "https://login.live.com/RST2.srf";
     private static final String LOGIN_USER_AGENT =
@@ -168,7 +170,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
 
     /**
      * Logs in using the specified username and password. Returns a
-     * {@link DeltaSyncSession} object on successful authentication.
+     * {@link IDeltaSyncSession} object on successful authentication.
      *
      * @param username the username.
      * @param password the password.
@@ -178,7 +180,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
      * @throws IOException on communication errors.
      */
 	@Override
-    public DeltaSyncSession login(String username, String password)
+    public IDeltaSyncSession login(String username, String password)
             throws AuthenticationException, DeltaSyncException, IOException {
 
         if (username == null) {
@@ -201,7 +203,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
         XmlUtil.setTextContent(elSecurity, "wsu:Timestamp/wsu:Created", format.format(created));
         XmlUtil.setTextContent(elSecurity, "wsu:Timestamp/wsu:Expires", format.format(expires));
 
-        DeltaSyncSession session = new DeltaSyncSession(username, password);
+        IDeltaSyncSession session = new DeltaSyncSession(username, password);
 
         if (session.getLogger().isDebugEnabled()) {
             session.getLogger().debug("Sending login request: {}",
@@ -239,8 +241,8 @@ public class DeltaSyncClient implements IDeltaSyncClient {
             throw new AuthenticationException("Uknown authentication failure");
         }
 
-        session.ticket = ticket;
-        session.dsBaseUri = DS_BASE_URI;
+        session.setTicket(ticket);
+        session.setBaseUri(DS_BASE_URI);
 
         return session;
     }
@@ -257,7 +259,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
      * @throws IOException on communication errors.
      */
 	@Override
-    public DeltaSyncSession renew(DeltaSyncSession session)
+    public IDeltaSyncSession renew(IDeltaSyncSession session)
         throws AuthenticationException, DeltaSyncException, IOException {
 
         return login(session.getUsername(), session.getPassword());
@@ -275,7 +277,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
      * @throws IOException on communication errors.
      */
 	@Override
-    public void downloadRawMessageContent(DeltaSyncSession session, String messageId, OutputStream out)
+    public void downloadRawMessageContent(IDeltaSyncSession session, String messageId, OutputStream out)
             throws DeltaSyncException, IOException {
 
         downloadMessageContent(session, messageId, out, true);
@@ -293,13 +295,13 @@ public class DeltaSyncClient implements IDeltaSyncClient {
      * @throws IOException on communication errors.
      */
 	@Override
-    public void downloadMessageContent(DeltaSyncSession session, String messageId, OutputStream out)
+    public void downloadMessageContent(IDeltaSyncSession session, String messageId, OutputStream out)
             throws DeltaSyncException, IOException {
 
         downloadMessageContent(session, messageId, out, false);
     }
 
-    private void downloadMessageContent(final DeltaSyncSession session,
+    private void downloadMessageContent(final IDeltaSyncSession session,
             final String messageId, final OutputStream output, final boolean raw)
             throws DeltaSyncException, IOException {
 
@@ -317,7 +319,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
             public Document handle(URI uri, HttpResponse response)
                     throws DeltaSyncException, IOException {
 
-                session.dsBaseUri = uri.getScheme() + "://" + uri.getHost();
+                session.setBaseUri(uri.getScheme() + "://" + uri.getHost());
 
                 Header contentType = response.getFirstHeader("Content-Type");
                 if (contentType == null || !contentType.getValue().equals("application/xop+xml")) {
@@ -418,13 +420,13 @@ public class DeltaSyncClient implements IDeltaSyncClient {
     }
 
 	@Override
-    public SyncResponse sync(DeltaSyncSession session, SyncRequest syncRequest)
+    public SyncResponse sync(IDeltaSyncSession session, SyncRequest syncRequest)
             throws DeltaSyncException, IOException {
 
         StringBuilder request = new StringBuilder("<Sync xmlns=\"AirSync:\"><Collections>");
         for (SyncRequest.Collection collection : syncRequest.getCollections()) {
             request.append("<Collection>");
-            request.append("<Class>").append(collection.getClazz()).append("</Class>");
+            request.append("<Class>").append(collection.getClazz().getSyncName()).append("</Class>");
             if (collection.getCollectionId() != null) {
                 request.append("<CollectionId>").append(collection.getCollectionId()).append("</CollectionId>");
             }
@@ -441,10 +443,14 @@ public class DeltaSyncClient implements IDeltaSyncClient {
                     request.append("<Delete>").append("<ServerId>");
                     switch (collection.getClazz()) {
                     case Email:
-                        request.append(((EmailDeleteCommand) command).getId());
+						if (command instanceof MessageDeleteCommand) {
+							request.append(((MessageDeleteCommand) command).getId());
+						}
                         break;
                     case Folder:
-                        request.append(((FolderDeleteCommand) command).getId());
+						if (command instanceof FolderDeleteCommand) {
+							request.append(((FolderDeleteCommand) command).getId());
+						}
                         break;
                     }
                     request.append("</ServerId>").append("</Delete>");
@@ -481,15 +487,30 @@ public class DeltaSyncClient implements IDeltaSyncClient {
                         Date dateReceived = format.parse(XmlUtil.getTextContent(elAppData, "email:DateReceived"));
                         String subject = XmlUtil.getTextContent(elAppData, "email:Subject");
                         String from = XmlUtil.getTextContent(elAppData, "email:From");
-                        commands.add(new EmailAddCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments));
+                        commands.add(new MessageAddCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments));
                     } catch (ParseException e) {
                         throw new DeltaSyncException(e);
                     }
                 }
-                // TODO: AirSync:Change
+                for (Element elChange : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Change")) {
+                    try {
+                        String id = XmlUtil.getTextContent(elChange, "airsync:ServerId");
+                        String folderId = XmlUtil.getTextContent(elChange, "hmmail:FolderId");
+                        Element elAppData = XmlUtil.getElement(elChange, "airsync:ApplicationData");
+                        long size = Long.parseLong(XmlUtil.getTextContent(elAppData, "hmmail:Size"));
+                        boolean read = Integer.parseInt(XmlUtil.getTextContent(elAppData, "email:Read")) == 1;
+                        boolean hasAttachments = Integer.parseInt(XmlUtil.getTextContent(elAppData, "hmmail:HasAttachments")) == 1;
+                        Date dateReceived = format.parse(XmlUtil.getTextContent(elAppData, "email:DateReceived"));
+                        String subject = XmlUtil.getTextContent(elAppData, "email:Subject");
+                        String from = XmlUtil.getTextContent(elAppData, "email:From");
+                        commands.add(new MessageChangeCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments));
+                    } catch (ParseException e) {
+                        throw new DeltaSyncException(e);
+                    }
+                }
                 for (Element elDelete : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Delete")) {
                     String id = XmlUtil.getTextContent(elDelete, "airsync:ServerId");
-                    commands.add(new EmailDeleteCommand(id));
+                    commands.add(new MessageDeleteCommand(id));
                 }
                 break;
             case Folder:
@@ -499,6 +520,12 @@ public class DeltaSyncClient implements IDeltaSyncClient {
 					String parentID = XmlUtil.getTextContent(elAdd, "airsync:ApplicationData/hmfolder:ParentId");
                     commands.add(new FolderAddCommand(id, displayName, parentID));
 
+                }
+                for (Element elChange : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Change")) {
+                    String id = XmlUtil.getTextContent(elChange, "airsync:ServerId");
+                    String displayName = XmlUtil.getTextContent(elChange, "airsync:ApplicationData/hmfolder:DisplayName");
+					String parentID = XmlUtil.getTextContent(elChange, "airsync:ApplicationData/hmfolder:ParentId");
+                    commands.add(new FolderChangeCommand(id, displayName, parentID));
                 }
                 for (Element elDelete : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Delete")) {
                     String id = XmlUtil.getTextContent(elDelete, "airsync:ServerId");
@@ -524,13 +551,13 @@ public class DeltaSyncClient implements IDeltaSyncClient {
         return syncResponse;
     }
 
-    private Document sync(final DeltaSyncSession session, String request) throws DeltaSyncException, IOException {
+    private Document sync(final IDeltaSyncSession session, String request) throws DeltaSyncException, IOException {
         return call("Sync", session, request, new UriCapturingResponseHandler<Document>() {
 
             public Document handle(URI uri, HttpResponse response)
                     throws DeltaSyncException, IOException {
 
-                session.dsBaseUri = uri.getScheme() + "://" + uri.getHost();
+                session.setBaseUri(uri.getScheme() + "://" + uri.getHost());
                 Document doc = XmlUtil.parse(response.getEntity().getContent());
                 checkStatus(doc);
                 if (session.getLogger().isDebugEnabled()) {
@@ -543,13 +570,13 @@ public class DeltaSyncClient implements IDeltaSyncClient {
         });
     }
 
-    private <T> T itemOperations(final DeltaSyncSession session, String request,
+    private <T> T itemOperations(final IDeltaSyncSession session, String request,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
 
         return call("ItemOperations", session, request, handler);
     }
 
-    private <T> T call(final String cmd, final DeltaSyncSession session, String request,
+    private <T> T call(final String cmd, final IDeltaSyncSession session, String request,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
 
         if (session.getLogger().isDebugEnabled()) {
@@ -561,7 +588,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
             }
         }
 
-        return post(session, session.dsBaseUri + "/DeltaSync_v2.0.0/" + cmd + ".aspx?"
+        return post(session, session.getBaseUri() + "/DeltaSync_v2.0.0/" + cmd + ".aspx?"
                 + session.getTicket(), DS_USER_AGENT, "text/xml", request, handler);
     }
 
@@ -595,24 +622,24 @@ public class DeltaSyncClient implements IDeltaSyncClient {
         }
     }
 
-    private <T> T post(DeltaSyncSession session, String uri, String userAgent, String contentType, Document doc,
+    private <T> T post(IDeltaSyncSession session, String uri, String userAgent, String contentType, Document doc,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
 
         return post(session, uri, userAgent, contentType, XmlUtil.toByteArray(doc), handler);
     }
 
-    private <T> T post(DeltaSyncSession session, String uri, String userAgent,String contentType, String s,
+    private <T> T post(IDeltaSyncSession session, String uri, String userAgent,String contentType, String s,
             UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
 
         return post(session, uri, userAgent, contentType, s.getBytes("UTF-8"), handler);
     }
 
-    private <T> T post(final DeltaSyncSession session, String uri, final String userAgent, final String contentType,
+    private <T> T post(final IDeltaSyncSession session, String uri, final String userAgent, final String contentType,
             final byte[] data, final UriCapturingResponseHandler<T> handler) throws DeltaSyncException, IOException {
 
         final HttpPost post = createHttpPost(uri, userAgent, contentType, data);
         final HttpContext context = new BasicHttpContext();
-        context.setAttribute(HttpClientContext.COOKIE_STORE, session.cookies);
+        context.setAttribute(HttpClientContext.COOKIE_STORE, session.getCookieStore());
 
         try {
 
@@ -698,7 +725,7 @@ public class DeltaSyncClient implements IDeltaSyncClient {
      * Slightly modified version of {@link DefaultRedirectStrategy#getLocationURI(HttpRequest, HttpResponse, HttpContext)}
      * which also adds the query string from the original request URI to the new URI.
      */
-    private URI getRedirectLocationURI(DeltaSyncSession session, HttpUriRequest request,
+    private URI getRedirectLocationURI(IDeltaSyncSession session, HttpUriRequest request,
             HttpResponse response, HttpContext context) throws DeltaSyncException {
 
         //get the location header to find out where to redirect to

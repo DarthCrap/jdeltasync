@@ -37,7 +37,7 @@ import ch.qos.logback.core.util.StatusPrinter;
 
 import com.googlecode.jdeltasync.DeltaSyncClient;
 import com.googlecode.jdeltasync.DiskStore;
-import com.googlecode.jdeltasync.Store;
+import com.googlecode.jdeltasync.IStore;
 
 /**
  * POP3 proxy server which can be used to access Windows Live Hotmail accounts
@@ -48,7 +48,7 @@ public class PopProxy {
     
     private final InetSocketAddress bindAddress;
     private final DeltaSyncClient deltaSyncClient;
-    private final Store store;
+    private final IStore store;
     private final ExecutorService executor;
     
     private boolean useHardwiredInbox = false;
@@ -56,7 +56,7 @@ public class PopProxy {
     private ServerThread serverThread;
     
     public PopProxy(InetSocketAddress bindAddress, DeltaSyncClient deltaSyncClient, 
-            Store store, ExecutorService executor) {
+            IStore store, ExecutorService executor) {
         
         this.bindAddress = bindAddress;
         this.deltaSyncClient = deltaSyncClient;

@@ -21,7 +21,7 @@ import java.util.Date;
 /**
  * Represents a message on the server.
  */
-public class Message implements Serializable {
+public class Message implements IMessage {
     private final String id;
     private final Date dateReceived;
     private final long size;
@@ -61,6 +61,7 @@ public class Message implements Serializable {
      * 
      * @return the id.
      */
+	@Override
     public String getId() {
         return id;
     }
@@ -70,6 +71,7 @@ public class Message implements Serializable {
      * 
      * @return the {@link Date} and time.
      */
+	@Override
     public Date getDateReceived() {
         return dateReceived;
     }
@@ -79,6 +81,7 @@ public class Message implements Serializable {
      * 
      * @return the size.
      */
+	@Override
     public long getSize() {
         return size;
     }
@@ -89,6 +92,7 @@ public class Message implements Serializable {
      * @return <code>true</code> if the messages has been read, 
      *         <code>false</code> otherwise.
      */
+	@Override
     public boolean isRead() {
         return read;
     }
@@ -99,6 +103,7 @@ public class Message implements Serializable {
      * @return <code>true</code> if the messages has attachments, 
      *         <code>false</code> otherwise.
      */
+	@Override
     public boolean hasAttachments() {
         return hasAttachments;
     }
@@ -108,6 +113,7 @@ public class Message implements Serializable {
      * 
      * @return the subject.
      */
+	@Override
     public String getSubject() {
         return subject;
     }
@@ -118,6 +124,7 @@ public class Message implements Serializable {
      * 
      * @return the sender name and e-mail.
      */
+	@Override
     public String getFrom() {
         return from;
     }

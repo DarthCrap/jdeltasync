@@ -21,7 +21,7 @@ import java.io.Serializable;
 /**
  * Represents a folder on the server.
  */
-public class Folder implements Serializable {
+public class Folder implements IFolder {
     private final String id;
     private final String name;
 	private final String parentID;
@@ -54,6 +54,7 @@ public class Folder implements Serializable {
      *
      * @return the id.
      */
+	@Override
     public String getId() {
         return id;
     }
@@ -63,6 +64,7 @@ public class Folder implements Serializable {
      *
      * @return the name.
      */
+	@Override
     public String getName() {
         return name;
     }
@@ -73,6 +75,7 @@ public class Folder implements Serializable {
      *
      * @return the parent id.
      */
+	@Override
     public String getParentID() {
         return this.parentID;
     }

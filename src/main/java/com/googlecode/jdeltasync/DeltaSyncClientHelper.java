@@ -17,10 +17,12 @@ package com.googlecode.jdeltasync;
 
 import com.googlecode.jdeltasync.message.Clazz;
 import com.googlecode.jdeltasync.message.Command;
-import com.googlecode.jdeltasync.message.EmailAddCommand;
-import com.googlecode.jdeltasync.message.EmailDeleteCommand;
 import com.googlecode.jdeltasync.message.FolderAddCommand;
+import com.googlecode.jdeltasync.message.FolderChangeCommand;
 import com.googlecode.jdeltasync.message.FolderDeleteCommand;
+import com.googlecode.jdeltasync.message.MessageAddCommand;
+import com.googlecode.jdeltasync.message.MessageChangeCommand;
+import com.googlecode.jdeltasync.message.MessageDeleteCommand;
 import com.googlecode.jdeltasync.message.SyncRequest;
 import com.googlecode.jdeltasync.message.SyncResponse;
 import com.googlecode.jdeltasync.message.SyncResponse.Collection.EmailDeleteResponse;
@@ -29,17 +31,14 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 
-public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
-    private static final Map<String, String> STANDARD_FOLDERS_MAPPINGS;
-
+public class DeltaSyncClientHelper implements IDeltaSyncClientHelper, ILegacyDeltaSyncClientHelper {
     /**
      * The default number of messages to request at a time in
-     * {@link #getMessages(Folder)}. Max value seems to be 2000. If a higher
+     * {@link #getMessages(IFolder)}. Max value seems to be 2000. If a higher
      * value is used the server never returns more than 2000 in each Sync
      * response.
      * <p>
@@ -48,21 +47,11 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
      */
     public static final int DEFAULT_WINDOW_SIZE = 256;
 
-    static {
-        STANDARD_FOLDERS_MAPPINGS = new HashMap<String, String>();
-        STANDARD_FOLDERS_MAPPINGS.put("ACTIVE", "Inbox");
-        STANDARD_FOLDERS_MAPPINGS.put("drAfT", "Drafts");
-        STANDARD_FOLDERS_MAPPINGS.put("HM_BuLkMail_", "Junk");
-        STANDARD_FOLDERS_MAPPINGS.put("sAVeD", "Sent");
-        STANDARD_FOLDERS_MAPPINGS.put("trAsH", "Deleted");
-        STANDARD_FOLDERS_MAPPINGS.put(".!!OIM", "Offline Instant Messages");
-    }
-
     private final IDeltaSyncClient client;
-    private final Store store;
+    private final IStore store;
     private final String username;
     private final String password;
-    private DeltaSyncSession session;
+    private IDeltaSyncSession session;
 
     private int windowSize = DEFAULT_WINDOW_SIZE;
 
@@ -70,7 +59,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
         this(client, username, password, new InMemoryStore());
     }
 
-    public DeltaSyncClientHelper(IDeltaSyncClient client, String username, String password, Store store) {
+    public DeltaSyncClientHelper(IDeltaSyncClient client, String username, String password, IStore store) {
         if (client == null) {
             throw new NullPointerException("client");
         }
@@ -89,15 +78,15 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
         this.store = store;
     }
 
-    public DeltaSyncSession getSession() {
+    public IDeltaSyncSession getSession() {
         return session;
     }
 
     /**
      * Returns the current <code>windowSize</code> which specifies the maximum
      * number of {@link Command} returned by a call to
-     * {@link DeltaSyncClient#sync(DeltaSyncSession, SyncRequest)} made by
-     * {@link #getMessages(Folder)}. {@link #getMessages(Folder)} needs to do
+     * {@link DeltaSyncClient#sync(IDeltaSyncSession, SyncRequest)} made by
+     * {@link #getMessages(IFolder)}. {@link #getMessages(IFolder)} needs to do
      * <code>totalNumberOfMessagesInFolder / windowSize</code> requests to
      * get all messages in a folder.
      *
@@ -128,10 +117,13 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
      * The standard folders have funny display names (e.g. drAfT).
      */
     private String getMappedDisplayName(String displayName) {
-        if (STANDARD_FOLDERS_MAPPINGS.containsKey(displayName)) {
-            return STANDARD_FOLDERS_MAPPINGS.get(displayName);
-        }
-        return displayName;
+		SpecialFolder sfFolder = SpecialFolder.getSpecialFolderForRawName(displayName);
+		if (sfFolder != null) {
+			return sfFolder.getDisplayName();
+		}
+		else {
+			return displayName;
+		}
     }
 
     private void checkLoggedIn() {
@@ -156,16 +148,16 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
     }
 
     /**
-     * Returns all {@link Folder}s.
+     * Returns all {@link IFolder}s.
      *
-     * @return all {@link Folder}s.
+     * @return all {@link IFolder}s.
      * @throws SessionExpiredException if the session has expired and couldn't
      *         be renewed.
      * @throws DeltaSyncException on errors returned by the server.
      * @throws IOException on communication errors.
      * @throws IllegalStateException if not logged in.
      */
-    public Folder[] getFolders() throws DeltaSyncException, IOException {
+    public Collection<IFolder> getFoldersCollection() throws DeltaSyncException, IOException {
         checkLoggedIn();
         try {
             return doGetFolders();
@@ -180,7 +172,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
         }
     }
 
-    private Folder[] doGetFolders() throws DeltaSyncException, IOException {
+    private Collection<IFolder> doGetFolders() throws DeltaSyncException, IOException {
 
         while (true) {
 
@@ -197,7 +189,8 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
                         + collection.getStatus());
             }
 
-            List<Folder> added = new ArrayList<Folder>();
+            List<IFolder> added = new ArrayList<IFolder>();
+			List<IFolder> changed = new ArrayList<IFolder>();
             List<String> deleted = new ArrayList<String>();
             for (Command cmd : collection.getCommands()) {
                 if (cmd instanceof FolderAddCommand) {
@@ -205,21 +198,28 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
                     added.add(new Folder(addCmd.getId(),
                             getMappedDisplayName(addCmd.getDisplayName()),
 							addCmd.getParentID()));
-                } else if (cmd instanceof FolderDeleteCommand) {
+                }
+				else if (cmd instanceof FolderChangeCommand) {
+                    FolderChangeCommand changeCmd = (FolderChangeCommand) cmd;
+                    changed.add(new Folder(changeCmd.getId(),
+                            getMappedDisplayName(changeCmd.getDisplayName()),
+							changeCmd.getParentID()));
+				}
+				else if (cmd instanceof FolderDeleteCommand) {
                     FolderDeleteCommand delCmd = (FolderDeleteCommand) cmd;
                     deleted.add(delCmd.getId());
                 }
             }
 
-            store.updateFolders(username, collection.getSyncKey(), added, deleted);
+            store.updateFolders(username, collection.getSyncKey(), added, changed, deleted);
 
             if (!collection.isMoreAvailable()) {
                 break;
             }
         }
 
-        Collection<Folder> folders = store.getFolders(username);
-        return folders.toArray(new Folder[folders.size()]);
+        Collection<IFolder> folders = store.getFolders(username);
+		return Collections.unmodifiableCollection(folders);
     }
 
     /**
@@ -232,21 +232,8 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
      * @throws IOException on communication errors.
      * @throws IllegalStateException if not logged in.
      */
-    public Folder getInbox() throws DeltaSyncException, IOException {
-        checkLoggedIn();
-
-        for (Folder folder : store.getFolders(username)) {
-            if ("Inbox".equals(folder.getName())) {
-                return folder;
-            }
-        }
-        getFolders();
-        for (Folder folder : store.getFolders(username)) {
-            if ("Inbox".equals(folder.getName())) {
-                return folder;
-            }
-        }
-        return null;
+    public IFolder getInbox() throws DeltaSyncException, IOException {
+		return getSpecialFolder(SpecialFolder.INBOX);
     }
 
 
@@ -261,7 +248,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
      * @throws IOException on communication errors.
      * @throws IllegalStateException if not logged in.
      */
-    public Message[] getMessages(Folder folder) throws DeltaSyncException, IOException {
+    public Collection<IMessage> getMessagesCollection(IFolder folder) throws DeltaSyncException, IOException {
         checkLoggedIn();
         try {
             return doGetMessages(folder);
@@ -284,7 +271,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
         }
     }
 
-    private Message[] doGetMessages(Folder folder) throws DeltaSyncException, IOException {
+    private Collection<IMessage> doGetMessages(IFolder folder) throws DeltaSyncException, IOException {
 
         while (true) {
 
@@ -301,67 +288,75 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
                         + collection.getStatus());
             }
 
-            List<Message> added = new ArrayList<Message>();
+            List<IMessage> added = new ArrayList<IMessage>();
+			List<IMessage> changed = new ArrayList<IMessage>();
             List<String> deleted = new ArrayList<String>();
             for (Command cmd : collection.getCommands()) {
-                if (cmd instanceof EmailAddCommand) {
-                    EmailAddCommand addCmd = (EmailAddCommand) cmd;
+                if (cmd instanceof MessageAddCommand) {
+                    MessageAddCommand addCmd = (MessageAddCommand) cmd;
                     added.add(new Message(addCmd.getId(),
                             addCmd.getDateReceived(), addCmd.getSize(), addCmd.isRead(),
                             addCmd.getSubject(), addCmd.getFrom(), addCmd.hasAttachments()));
-                } else if (cmd instanceof EmailDeleteCommand) {
-                    EmailDeleteCommand delCmd = (EmailDeleteCommand) cmd;
+				}
+				else if (cmd instanceof MessageChangeCommand) {
+                    MessageChangeCommand changeCmd = (MessageChangeCommand) cmd;
+                    changed.add(new Message(changeCmd.getId(),
+                            changeCmd.getDateReceived(), changeCmd.getSize(), changeCmd.isRead(),
+                            changeCmd.getSubject(), changeCmd.getFrom(), changeCmd.hasAttachments()));
+				}
+                else if (cmd instanceof MessageDeleteCommand) {
+                    MessageDeleteCommand delCmd = (MessageDeleteCommand) cmd;
                     deleted.add(delCmd.getId());
                 }
             }
 
-            store.updateMessages(username, folder, collection.getSyncKey(), added, deleted);
+            store.updateMessages(username, folder, collection.getSyncKey(), added, changed, deleted);
 
             if (!collection.isMoreAvailable()) {
                 break;
             }
         }
 
-        Collection<Message> messages = store.getMessages(username, folder);
-        return messages.toArray(new Message[messages.size()]);
+        Collection<IMessage> messages = store.getMessages(username, folder);
+        return Collections.unmodifiableCollection(messages);
     }
 
     /**
-     * Deletes the specified {@link Message}s from the specified {@link Folder}.
+     * Deletes the specified {@link Email}s from the specified {@link Folder}.
      *
      * @param folder the {@link Folder}.
-     * @param messages the {@link Message}s to be deleted.
-     * @return the ids of the {@link Message}s actually deleted.
+     * @param messages the {@link Email}s to be deleted.
+     * @return the ids of the {@link Email}s actually deleted.
      * @throws SessionExpiredException if the session has expired and couldn't
      *         be renewed.
      * @throws DeltaSyncException on errors returned by the server.
      * @throws IOException on communication errors.
      * @throws IllegalStateException if not logged in.
      */
-    public String[] delete(Folder folder, Message[] messages) throws DeltaSyncException, IOException {
-        String[] ids = new String[messages.length];
-        for (int i = 0; i < messages.length; i++) {
-            ids[i] = messages[i].getId();
-        }
-        return delete(folder, ids);
+    public Collection<String> deleteMessages(IFolder folder, Collection<IMessage> messages) throws DeltaSyncException, IOException {
+        List<String> ids = new ArrayList<String>(messages.size());
+		for (IMessage message : messages) {
+			ids.add(message.getId());
+		}
+        return deleteMessagesByID(folder, ids);
     }
 
     /**
-     * Deletes the {@link Message}s with the specified ids from the specified
+     * Deletes the {@link Email}s with the specified ids from the specified
      * {@link Folder}.
      *
      * @param folder the {@link Folder}.
      * @param ids the ids to be deleted.
-     * @return the ids of the {@link Message}s actually deleted.
+     * @return the ids of the {@link Email}s actually deleted.
      * @throws SessionExpiredException if the session has expired and couldn't
      *         be renewed.
      * @throws DeltaSyncException on errors returned by the server.
      * @throws IOException on communication errors.
      * @throws IllegalStateException if not logged in.
      */
-    public String[] delete(Folder folder, String[] ids) throws DeltaSyncException, IOException {
+    public Collection<String> deleteMessagesByID(IFolder folder, Collection<String> ids) throws DeltaSyncException, IOException {
         checkLoggedIn();
-        LinkedList<String> idsList = new LinkedList<String>(Arrays.asList(ids));
+        LinkedList<String> idsList = new LinkedList<String>(ids);
         ArrayList<String> deleted = new ArrayList<String>();
         try {
             doDelete(folder, idsList, deleted);
@@ -374,19 +369,20 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
             store.resetMessages(username, folder);
             doDelete(folder, idsList, deleted);
         }
-        return deleted.toArray(new String[deleted.size()]);
+        return Collections.unmodifiableList(deleted);
     }
 
-    private void doDelete(Folder folder, LinkedList<String> ids, List<String> deleted) throws DeltaSyncException, IOException {
-        while (!ids.isEmpty()) {
+    private void doDelete(IFolder folder, Collection<String> ids, Collection<String> deleted) throws DeltaSyncException, IOException {
+		LinkedList<String> idsll = new LinkedList<String>(ids);
+        while (!idsll.isEmpty()) {
 
             /*
              * Only delete up to 64 messages in each request. We don't know the
              * exact limit but we know that 160 is too many. 64 works fine.
              */
             List<Command> commands = new ArrayList<Command>();
-            for (String id : ids.size() < 64 ? ids : ids.subList(0, 64)) {
-                commands.add(new EmailDeleteCommand(id));
+            for (String id : idsll.size() < 64 ? idsll : idsll.subList(0, 64)) {
+                commands.add(new MessageDeleteCommand(id));
             }
 
             SyncRequest syncRequest = new SyncRequest(new SyncRequest.Collection(
@@ -409,7 +405,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
             }
 
             // Remove commands.size() elements from ids
-            ids.subList(0, commands.size()).clear();
+            idsll.subList(0, commands.size()).clear();
 
             List<String> deletedInRun = new ArrayList<String>();
             for (SyncResponse.Collection.Response rsp : collection.getResponses()) {
@@ -427,15 +423,15 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
             deleted.addAll(deletedInRun);
 
             store.updateMessages(username, folder, collection.getSyncKey(),
-                    new ArrayList<Message>(), deletedInRun);
+                    new ArrayList<IMessage>(), new ArrayList<IMessage>(), deletedInRun);
         }
     }
 
     /**
-     * Downloads the content of the specified {@link Message} and writes it to
+     * Downloads the content of the specified {@link Email} and writes it to
      * the specified {@link OutputStream}.
      *
-     * @param message the {@link Message} to download the content for.
+     * @param message the {@link Email} to download the content for.
      * @param out the stream to write the message content to.
      * @throws SessionExpiredException if the session has expired and couldn't
      *         be renewed.
@@ -443,7 +439,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
      * @throws IOException on communication errors.
      * @throws IllegalStateException if not logged in.
      */
-    public void downloadMessageContent(Message message, OutputStream out)
+    public void downloadMessageContent(IMessage message, OutputStream out)
             throws DeltaSyncException, IOException {
 
         checkLoggedIn();
@@ -456,10 +452,10 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
     }
 
     /**
-     * Downloads the HU01 compressed content of the specified {@link Message}
+     * Downloads the HU01 compressed content of the specified {@link Email}
      * and writes it to the specified {@link OutputStream}.
      *
-     * @param message the {@link Message} to download the content for.
+     * @param message the {@link Email} to download the content for.
      * @param out the stream to write the HU01 compressed message content to.
      * @throws SessionExpiredException if the session has expired and couldn't
      *         be renewed.
@@ -467,7 +463,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
      * @throws IOException on communication errors.
      * @throws IllegalStateException if not logged in.
      */
-    public void downloadRawMessageContent(Message message, OutputStream out)
+    public void downloadRawMessageContent(IMessage message, OutputStream out)
             throws DeltaSyncException, IOException {
 
         checkLoggedIn();
@@ -478,4 +474,75 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper {
             client.downloadRawMessageContent(session, message.getId(), out);
         }
     }
+
+	public IFolder getSpecialFolder(SpecialFolder sfFolder) throws DeltaSyncException, IOException {
+		return getFolderByName(sfFolder.getDisplayName());
+	}
+
+	public IFolder getFolderByName(String strName) throws DeltaSyncException, IOException {
+        checkLoggedIn();
+
+        for (IFolder folder : store.getFolders(username)) {
+            if (strName.equals(folder.getName())) {
+                return folder;
+            }
+        }
+        getFoldersCollection();
+        for (IFolder folder : store.getFolders(username)) {
+            if (strName.equals(folder.getName())) {
+                return folder;
+            }
+        }
+        return null;
+	}
+
+	public IFolder getFolderByRawName(String strName) throws DeltaSyncException, IOException {
+		return getFolderByName(getMappedDisplayName(strName));
+	}
+
+	public IFolder getFolderByID(String strID) throws DeltaSyncException, IOException {
+        checkLoggedIn();
+
+        for (IFolder folder : store.getFolders(username)) {
+            if (strID.equals(folder.getId())) {
+                return folder;
+            }
+        }
+        getFoldersCollection();
+        for (IFolder folder : store.getFolders(username)) {
+            if (strID.equals(folder.getId())) {
+                return folder;
+            }
+        }
+        return null;
+	}
+
+	public void logout() {
+		if (session == null) {
+            throw new IllegalStateException("Already logged out");
+        }
+		else {
+			session = null;
+		}
+	}
+
+	public IFolder[] getFolders() throws DeltaSyncException, IOException {
+		Collection<IFolder> colFolders = this.getFoldersCollection();
+		return colFolders.toArray(new IFolder[colFolders.size()]);
+	}
+
+	public IMessage[] getMessages(IFolder folder) throws DeltaSyncException, IOException {
+		Collection<IMessage> colMessages = this.getMessagesCollection(folder);
+		return colMessages.toArray(new IMessage[colMessages.size()]);
+	}
+
+	public String[] delete(IFolder folder, IMessage[] messages) throws DeltaSyncException, IOException {
+		Collection<String> colIDs = this.deleteMessages(folder, Arrays.asList(messages));
+		return colIDs.toArray(new String[colIDs.size()]);
+	}
+
+	public String[] delete(IFolder folder, String[] ids) throws DeltaSyncException, IOException {
+		Collection<String> colIDs = this.deleteMessagesByID(folder, Arrays.asList(ids));
+		return colIDs.toArray(new String[colIDs.size()]);
+	}
 }

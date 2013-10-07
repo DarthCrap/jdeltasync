@@ -17,7 +17,7 @@ package com.googlecode.jdeltasync;
 
 /**
  * Exception thrown by 
- * {@link DeltaSyncClient#downloadMessageContent(DeltaSyncSession, Message, java.io.OutputStream)}
+ * {@link DeltaSyncClient#downloadMessageContent(IDeltaSyncSession, Message, java.io.OutputStream)}
  * when the requested message doesn't exist on the server.
  */
 @SuppressWarnings("serial")

@@ -17,17 +17,24 @@ package com.googlecode.jdeltasync;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Collection;
 
 public interface IDeltaSyncClientHelper {
-	public String[] delete(Folder folder, String[] ids) throws DeltaSyncException, IOException;
-	public String[] delete(Folder folder, Message[] messages) throws DeltaSyncException, IOException;
-	public void downloadMessageContent(Message message, OutputStream out) throws DeltaSyncException, IOException;
-	public void downloadRawMessageContent(Message message, OutputStream out) throws DeltaSyncException, IOException;
-	public Folder[] getFolders() throws DeltaSyncException, IOException;
-	public Folder getInbox() throws DeltaSyncException, IOException;
-	public Message[] getMessages(Folder folder) throws DeltaSyncException, IOException;
-	public DeltaSyncSession getSession();
-	public int getWindowSize();
+	public static final int DEFAULT_WINDOW_SIZE = 256;
+	public Collection<String> deleteMessagesByID(IFolder folder, Collection<String> ids) throws DeltaSyncException, IOException;
+	public Collection<String> deleteMessages(IFolder folder, Collection<IMessage> messages) throws DeltaSyncException, IOException;
+	public void downloadMessageContent(IMessage message, OutputStream out) throws DeltaSyncException, IOException;
+	public void downloadRawMessageContent(IMessage message, OutputStream out) throws DeltaSyncException, IOException;
+	public Collection<IFolder> getFoldersCollection() throws DeltaSyncException, IOException;
+	public IFolder getInbox() throws DeltaSyncException, IOException;
+	public IFolder getSpecialFolder(SpecialFolder sfFolder) throws DeltaSyncException, IOException;
+	public IFolder getFolderByName(String strName) throws DeltaSyncException, IOException;
+	public IFolder getFolderByRawName(String strName) throws DeltaSyncException, IOException;
+	public IFolder getFolderByID(String strName) throws DeltaSyncException, IOException;
+	public Collection<IMessage> getMessagesCollection(IFolder folder) throws DeltaSyncException, IOException;
+	public IDeltaSyncSession getSession();
 	public void login() throws AuthenticationException, DeltaSyncException, IOException;
+	public void logout();
+	public int getWindowSize();
 	public void setWindowSize(int windowSize);
 }
