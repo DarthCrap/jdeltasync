@@ -3,12 +3,12 @@
   <groupId>com.googlecode.jdeltasync</groupId>
   <artifactId>jdeltasync</artifactId>
   <packaging>jar</packaging>
-  <version>0.7-SNAPSHOT-BRANCH-DC</version>
+  <version>0.8-SNAPSHOT-BRANCH-DC</version>
   <name>JDeltaSync</name>
   <url>http://jdeltasync.googlecode.com</url>
   <description>
     JDeltaSync is a Java implementation of Microsoft's proprietary DeltaSync protocol.
-    The DeltaSync protocol is used by Windows Live Mail and other software to synchronize 
+    The DeltaSync protocol is used by Windows Live Mail and other software to synchronize
     mail, contacts, calendars, etc with web services like Microsoft's Windows Live Hotmail.
   </description>
   <properties>
@@ -35,7 +35,7 @@
       <artifactId>slf4j-api</artifactId>
       <version>1.5.8</version>
     </dependency>
-	
+
     <dependency>
       <groupId>org.apache.httpcomponents</groupId>
       <artifactId>httpclient</artifactId>
@@ -77,7 +77,7 @@
       <version>0.9.17</version>
       <optional>true</optional>
     </dependency>
-    
+
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
@@ -85,7 +85,7 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-  
+
   <build>
     <plugins>
       <plugin>
@@ -184,13 +184,13 @@
 	  </plugin>
     </plugins>
   </build>
-  
+
   <pluginRepositories>
     <pluginRepository>
       <id>onejar-maven-plugin.googlecode.com</id>
       <url>http://onejar-maven-plugin.googlecode.com/svn/mavenrepo</url>
     </pluginRepository>
   </pluginRepositories>
-  
+
 </project>
 

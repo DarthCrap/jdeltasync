@@ -23,11 +23,11 @@ import java.util.Date;
  */
 public class MessageAddCommand extends AbstractMessageDetailsCommand {
 	/**
-	@see AbstractMessageDetailsCommand#AbstractMessageDetailsCommand(java.lang.String, java.lang.String, java.util.Date, long, boolean, java.lang.String, java.lang.String, boolean)
+	@see AbstractMessageDetailsCommand#AbstractMessageDetailsCommand(java.lang.String, java.lang.String, java.util.Date, long, boolean, java.lang.String, java.lang.String, boolean, boolean)
 	*/
 	public MessageAddCommand(String id, String folderId, Date dateReceived, long size, boolean read,
-            String subject, String from, boolean hasAttachments) {
-		super(id, folderId, dateReceived, size, read, subject, from, hasAttachments);
+            String subject, String from, boolean hasAttachments, boolean hasFlag) {
+		super(id, folderId, dateReceived, size, read, subject, from, hasAttachments, hasFlag);
 	}
 
     @Override

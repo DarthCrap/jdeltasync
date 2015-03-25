@@ -29,6 +29,7 @@ public abstract class AbstractMessageDetailsCommand extends Command {
     private final boolean hasAttachments;
     private final String subject;
     private final String from;
+    private final boolean hasFlag;
 
     /**
      * Creates a new {@link Message}.
@@ -43,9 +44,11 @@ public abstract class AbstractMessageDetailsCommand extends Command {
      * @param from the name and e-mail address of the sender.
      * @param hasAttachments <code>true</code> if the messages has attachments,
      *        <code>false</code> otherwise.
+     * @param hasFlag <code>true</code> if the messages is flagged,
+     *        <code>false</code> otherwise.
      */
     public AbstractMessageDetailsCommand(String id, String folderId, Date dateReceived, long size, boolean read,
-            String subject, String from, boolean hasAttachments) {
+            String subject, String from, boolean hasAttachments, boolean hasFlag) {
 
         this.id = id;
         this.folderId = folderId;
@@ -55,6 +58,7 @@ public abstract class AbstractMessageDetailsCommand extends Command {
         this.subject = subject;
         this.from = from;
         this.hasAttachments = hasAttachments;
+        this.hasFlag = hasFlag;
     }
 
     /**
@@ -109,6 +113,16 @@ public abstract class AbstractMessageDetailsCommand extends Command {
     }
 
     /**
+     * Returns whether this {@link Message} has a flag.
+     *
+     * @return <code>true</code> if the messages has a flag,
+     *         <code>false</code> otherwise.
+     */
+    public boolean hasFlag() {
+        return hasFlag;
+    }
+
+    /**
      * Returns the subject of this {@link Message}.
      *
      * @return the subject.
@@ -138,6 +152,7 @@ public abstract class AbstractMessageDetailsCommand extends Command {
         sb.append("subject").append("=").append(subject).append(",");
         sb.append("from").append("=").append(from).append(",");
         sb.append("has attachments").append("=").append(hasAttachments);
+        sb.append("has flag").append("=").append(hasFlag);
         sb.append(")");
         return sb.toString();
     }

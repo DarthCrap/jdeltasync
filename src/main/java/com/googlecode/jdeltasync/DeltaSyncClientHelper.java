@@ -218,8 +218,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper, ILegacyDel
             }
         }
 
-        Collection<IFolder> folders = store.getFolders(username);
-		return Collections.unmodifiableCollection(folders);
+		return Collections.unmodifiableCollection(new ArrayList<IFolder>(store.getFolders(username)));
     }
 
     /**
@@ -317,8 +316,7 @@ public class DeltaSyncClientHelper implements IDeltaSyncClientHelper, ILegacyDel
             }
         }
 
-        Collection<IMessage> messages = store.getMessages(username, folder);
-        return Collections.unmodifiableCollection(messages);
+        return Collections.unmodifiableCollection(new ArrayList<IMessage>(store.getMessages(username, folder)));
     }
 
     /**

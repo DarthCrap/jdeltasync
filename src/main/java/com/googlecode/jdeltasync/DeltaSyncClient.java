@@ -481,13 +481,15 @@ public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient
                         String id = XmlUtil.getTextContent(elAdd, "airsync:ServerId");
                         String folderId = XmlUtil.getTextContent(elAdd, "hmmail:FolderId");
                         Element elAppData = XmlUtil.getElement(elAdd, "airsync:ApplicationData");
+                        Element elFlag = XmlUtil.getElement(elAppData, "hmmail:Flag");
+                        boolean hasFlag = Integer.parseInt(XmlUtil.getTextContent(elFlag, "hmmail:State")) != 0;
                         long size = Long.parseLong(XmlUtil.getTextContent(elAppData, "hmmail:Size"));
                         boolean read = Integer.parseInt(XmlUtil.getTextContent(elAppData, "email:Read")) == 1;
                         boolean hasAttachments = Integer.parseInt(XmlUtil.getTextContent(elAppData, "hmmail:HasAttachments")) == 1;
                         Date dateReceived = format.parse(XmlUtil.getTextContent(elAppData, "email:DateReceived"));
                         String subject = XmlUtil.getTextContent(elAppData, "email:Subject");
                         String from = XmlUtil.getTextContent(elAppData, "email:From");
-                        commands.add(new MessageAddCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments));
+                        commands.add(new MessageAddCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments, hasFlag));
                     } catch (ParseException e) {
                         throw new DeltaSyncException(e);
                     }
@@ -497,13 +499,15 @@ public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient
                         String id = XmlUtil.getTextContent(elChange, "airsync:ServerId");
                         String folderId = XmlUtil.getTextContent(elChange, "hmmail:FolderId");
                         Element elAppData = XmlUtil.getElement(elChange, "airsync:ApplicationData");
+                        Element elFlag = XmlUtil.getElement(elAppData, "hmmail:Flag");
+                        boolean hasFlag = Integer.parseInt(XmlUtil.getTextContent(elFlag, "hmmail:State")) != 0;
                         long size = Long.parseLong(XmlUtil.getTextContent(elAppData, "hmmail:Size"));
                         boolean read = Integer.parseInt(XmlUtil.getTextContent(elAppData, "email:Read")) == 1;
                         boolean hasAttachments = Integer.parseInt(XmlUtil.getTextContent(elAppData, "hmmail:HasAttachments")) == 1;
                         Date dateReceived = format.parse(XmlUtil.getTextContent(elAppData, "email:DateReceived"));
                         String subject = XmlUtil.getTextContent(elAppData, "email:Subject");
                         String from = XmlUtil.getTextContent(elAppData, "email:From");
-                        commands.add(new MessageChangeCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments));
+                        commands.add(new MessageChangeCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments, hasFlag));
                     } catch (ParseException e) {
                         throw new DeltaSyncException(e);
                     }
