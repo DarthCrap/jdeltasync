@@ -27,6 +27,7 @@ import com.googlecode.jdeltasync.message.MessageChangeCommand;
 import com.googlecode.jdeltasync.message.MessageDeleteCommand;
 import com.googlecode.jdeltasync.message.SyncRequest;
 import com.googlecode.jdeltasync.message.SyncResponse;
+import com.sun.org.apache.xerces.internal.dom.DeferredNode;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -40,7 +41,9 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.SortedMap;
 import java.util.TimeZone;
+import java.util.TreeMap;
 import java.util.regex.Pattern;
 import org.apache.commons.codec.binary.Base64OutputStream;
 import org.apache.http.Header;
@@ -419,6 +422,22 @@ public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient
         }
     }
 
+    private void addCommand(SortedMap<Integer,List<Command>> commandMap, Element element, Command command) {
+        int index;
+        if (element instanceof DeferredNode) {
+            index = ((DeferredNode)element).getNodeIndex();
+        }
+        else {
+            index = -1;
+        }
+        List<Command> commandsForIndex = commandMap.get(index);
+        if (commandsForIndex == null) {
+            commandsForIndex = new ArrayList<Command>();
+            commandMap.put(index,commandsForIndex);
+        }
+        commandsForIndex.add(command);
+    }
+
 	@Override
     public SyncResponse sync(IDeltaSyncSession session, SyncRequest syncRequest)
             throws DeltaSyncException, IOException {
@@ -472,7 +491,7 @@ public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient
             Clazz clazz = Clazz.valueOf(XmlUtil.getTextContent(elCollection, "airsync:Class"));
             int status = Integer.parseInt(XmlUtil.getTextContent(elCollection, "airsync:Status"));
             boolean moreAvailable = XmlUtil.hasElement(elCollection, "airsync:MoreAvailable");
-            List<Command> commands = new ArrayList<Command>();
+            SortedMap<Integer,List<Command>> commandMap = new TreeMap<Integer,List<Command>>();
 
             switch (clazz) {
             case Email:
@@ -489,7 +508,7 @@ public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient
                         Date dateReceived = format.parse(XmlUtil.getTextContent(elAppData, "email:DateReceived"));
                         String subject = XmlUtil.getTextContent(elAppData, "email:Subject");
                         String from = XmlUtil.getTextContent(elAppData, "email:From");
-                        commands.add(new MessageAddCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments, hasFlag));
+                        addCommand(commandMap,elAdd,new MessageAddCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments, hasFlag));
                     } catch (ParseException e) {
                         throw new DeltaSyncException(e);
                     }
@@ -507,14 +526,14 @@ public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient
                         Date dateReceived = format.parse(XmlUtil.getTextContent(elAppData, "email:DateReceived"));
                         String subject = XmlUtil.getTextContent(elAppData, "email:Subject");
                         String from = XmlUtil.getTextContent(elAppData, "email:From");
-                        commands.add(new MessageChangeCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments, hasFlag));
+                        addCommand(commandMap,elChange,new MessageChangeCommand(id, folderId, dateReceived, size, read, subject, from, hasAttachments, hasFlag));
                     } catch (ParseException e) {
                         throw new DeltaSyncException(e);
                     }
                 }
                 for (Element elDelete : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Delete")) {
                     String id = XmlUtil.getTextContent(elDelete, "airsync:ServerId");
-                    commands.add(new MessageDeleteCommand(id));
+                    addCommand(commandMap,elDelete,new MessageDeleteCommand(id));
                 }
                 break;
             case Folder:
@@ -522,19 +541,24 @@ public class DeltaSyncClient implements IDeltaSyncClient, ILegacyDeltaSyncClient
                     String id = XmlUtil.getTextContent(elAdd, "airsync:ServerId");
                     String displayName = XmlUtil.getTextContent(elAdd, "airsync:ApplicationData/hmfolder:DisplayName");
 					String parentID = XmlUtil.getTextContent(elAdd, "airsync:ApplicationData/hmfolder:ParentId");
-                    commands.add(new FolderAddCommand(id, displayName, parentID));
+                    addCommand(commandMap,elAdd,new FolderAddCommand(id, displayName, parentID));
 
                 }
                 for (Element elChange : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Change")) {
                     String id = XmlUtil.getTextContent(elChange, "airsync:ServerId");
                     String displayName = XmlUtil.getTextContent(elChange, "airsync:ApplicationData/hmfolder:DisplayName");
 					String parentID = XmlUtil.getTextContent(elChange, "airsync:ApplicationData/hmfolder:ParentId");
-                    commands.add(new FolderChangeCommand(id, displayName, parentID));
+                    addCommand(commandMap,elChange,new FolderChangeCommand(id, displayName, parentID));
                 }
                 for (Element elDelete : XmlUtil.getElements(elCollection, "airsync:Commands/airsync:Delete")) {
                     String id = XmlUtil.getTextContent(elDelete, "airsync:ServerId");
-                    commands.add(new FolderDeleteCommand(id));
+                    addCommand(commandMap,elDelete,new FolderDeleteCommand(id));
                 }
+            }
+
+            List<Command> commands = new ArrayList<Command>();
+            for (List<Command> commandsForIndex : commandMap.values()) {
+                commands.addAll(commandsForIndex);
             }
 
             List<SyncResponse.Collection.Response> responses = new ArrayList<SyncResponse.Collection.Response>();
